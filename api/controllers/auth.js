@@ -1,0 +1,55 @@
+import { db } from "../db.js"
+import bcrypt from "bcryptjs"
+import jwt from 'jsonwebtoken'
+
+export const register = (req, res) => {
+  // Check Exsisting User
+  const q = "Select * FROM users WHERE email = ? OR username = ?"
+
+  db.query(q, [req.body.email, req.body.name], (error, data) => {
+    if (error) return res.json(error)
+    if (data.length) return res.status(409).json("此帳號已註冊完成")
+
+    // Hash the password and create a user
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync(req.body.password, salt);
+
+    const q = "INSERT INTO users(`username`,`email`,`password`) VALUES (?)"
+    const values = [req.body.username, req.body.email, hash]
+
+    db.query(q, [values], (error, data) => {
+      if (error) return res.json(error);
+      return res.status(200).json("註冊成功!");
+    })
+  })
+}
+
+export const login = (req, res) => {
+  // Check User
+  const q = "Select * FROM users WHERE username = ?"
+  db.query(q, [req.body.username], (error, data) => {
+    if (error) return res.json(error);
+    if (data.length === 0) return res.status(404).json('此帳號不存在')
+
+    // Check password
+    const isPasswordCorrect = bcrypt.compareSync(req.body.password, data[0].password);
+    if (!isPasswordCorrect) return res.status(400).json('帳號或密碼錯誤')
+
+    // Create token
+    const token = jwt.sign({ id: data[0].id }, 'jwtkey')
+    // Remove password from data  
+    const { password, ...other } = data[0]
+
+    // Set Cookie
+    res.cookie('access_token', token, {
+      httpOnly: true
+    }).status(200).json(other)
+  })
+}
+
+export const logout = (req, res) => {
+  res.clearCookie('access_token', {
+    sameSite: 'none',
+    secure: true,
+  }).status(200).json('登出成功')
+}
